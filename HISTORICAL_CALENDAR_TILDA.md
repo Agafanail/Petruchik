@@ -89,106 +89,113 @@ function doGet() {
 
 ---
 
-## Финальный HTML‑блок для Tilda (надёжный вариант JSON)
+## Финальный JS‑код для Tilda ZeroBlock (надёжный вариант JSON)
 
-> Вставьте **одним блоком** в HTML‑блок Tilda. Замените `YOUR_WEB_APP_URL` на URL вашего Apps Script веб‑приложения.
+> В ZeroBlock вы заранее создаёте элементы с нужными классами. Скрипт **не создаёт разметку**, не добавляет стили и **не использует innerHTML** — он только заполняет существующие элементы и скрывает лишние. Замените `YOUR_WEB_APP_URL` на URL вашего Apps Script веб‑приложения.
 
 ```html
-<div id="kr-calendar" class="kr-calendar kr-calendar--loading">
-  <div class="kr-calendar__header">
-    <div class="kr-calendar__date"></div>
-    <div class="kr-calendar__weekday"></div>
-  </div>
-  <div class="kr-calendar__list"></div>
-</div>
-
-<style>
-  /* Минимальные базовые стили (можно переопределять в Tilda Global CSS) */
-  .kr-calendar { max-width: 800px; margin: 0 auto; padding: 16px; }
-  .kr-calendar__header { margin-bottom: 16px; }
-  .kr-calendar__date { font-size: 20px; font-weight: 600; }
-  .kr-calendar__weekday { font-size: 14px; opacity: 0.7; }
-  .kr-calendar__list { display: grid; gap: 12px; }
-  .kr-calendar__item { display: grid; gap: 8px; }
-  .kr-calendar__year { font-weight: 600; }
-  .kr-calendar__media { max-width: 100%; }
-  .kr-calendar__img { width: 100%; height: auto; display: block; border-radius: 4px; }
-  .kr-calendar__empty, .kr-calendar__error { padding: 12px; background: #f5f5f5; border-radius: 6px; }
-  .kr-calendar--loading { opacity: 0.6; }
-</style>
-
 <script>
 (() => {
   const CALENDAR_URL = 'YOUR_WEB_APP_URL'; // <-- замените на URL Apps Script Web App
-
-  const container = document.getElementById('kr-calendar');
-  const dateEl = container.querySelector('.kr-calendar__date');
-  const weekdayEl = container.querySelector('.kr-calendar__weekday');
-  const listEl = container.querySelector('.kr-calendar__list');
-
   const locale = 'ru-RU';
-  const today = new Date();
+  const timeZone = 'Europe/Minsk';
 
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
+  // Скрипт заполняет только первый набор элементов на странице.
+  const dateEl = document.querySelector('.kr-calendar-date');
+  const emptyEl = document.querySelector('.kr-calendar-empty');
+  const itemEls = Array.from(document.querySelectorAll('.kr-calendar-item'));
+
+  if (!dateEl || !emptyEl || itemEls.length === 0) {
+    return;
+  }
+
+  const today = new Date();
+  const formatter = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', timeZone });
+  const parts = new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone,
+  }).formatToParts(today);
+
+  const mm = parts.find(part => part.type === 'month')?.value || '';
+  const dd = parts.find(part => part.type === 'day')?.value || '';
   const mmdd = `${mm}${dd}`;
 
-  dateEl.textContent = today.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
-  weekdayEl.textContent = today.toLocaleDateString(locale, { weekday: 'long' });
+  dateEl.textContent = formatter.format(today);
 
-  function setLoading(isLoading) {
-    container.classList.toggle('kr-calendar--loading', isLoading);
+  function setEmptyVisible(isVisible) {
+    emptyEl.style.display = isVisible ? '' : 'none';
   }
 
-  function renderEmpty() {
-    listEl.innerHTML = '<div class="kr-calendar__empty">В этот день ничего не произошло</div>';
+  function setItemVisible(el, isVisible) {
+    el.style.display = isVisible ? '' : 'none';
   }
 
-  function renderError() {
-    listEl.innerHTML = '<div class="kr-calendar__error">Не удалось загрузить данные календаря</div>';
+  function setImageVisible(wrapperEl, imgEl, isVisible) {
+    if (wrapperEl) {
+      wrapperEl.style.display = isVisible ? '' : 'none';
+    }
+    if (imgEl) {
+      imgEl.style.display = isVisible ? '' : 'none';
+    }
   }
 
-  function renderItems(items) {
+  function fillItems(items) {
     if (!items.length) {
-      renderEmpty();
+      setEmptyVisible(true);
+      itemEls.forEach(el => setItemVisible(el, false));
       return;
     }
 
-    const html = items.map(item => {
-      const year = item.year ? `<div class="kr-calendar__year">${item.year}</div>` : '';
-      const text = item.text ? `<div class="kr-calendar__text">${item.text}</div>` : '';
-      const img = item.image
-        ? `<div class="kr-calendar__media"><img class="kr-calendar__img" loading="lazy" src="${item.image}" alt="${item.text || 'Историческое событие'} (${item.year || ''})"></div>`
-        : '';
+    setEmptyVisible(false);
 
-      return `
-        <div class="kr-calendar__item">
-          ${year}
-          ${text}
-          ${img}
-        </div>
-      `;
-    }).join('');
+    itemEls.forEach((itemEl, index) => {
+      const data = items[index];
+      if (!data) {
+        setItemVisible(itemEl, false);
+        return;
+      }
 
-    listEl.innerHTML = html;
+      setItemVisible(itemEl, true);
+
+      const yearEl = itemEl.querySelector('.kr-calendar-year');
+      const textEl = itemEl.querySelector('.kr-calendar-text');
+      const imageEl = itemEl.querySelector('.kr-calendar-image img') || itemEl.querySelector('.kr-calendar-image');
+
+      if (yearEl) yearEl.textContent = data.year ? String(data.year) : '';
+      if (textEl) textEl.textContent = data.text ? String(data.text) : '';
+
+      const imageUrl = data.image ? String(data.image).trim() : '';
+      if (imageEl && imageEl.tagName.toLowerCase() === 'img') {
+        if (imageUrl) {
+          imageEl.src = imageUrl;
+          imageEl.alt = data.text ? String(data.text) : 'Историческое событие';
+        } else {
+          imageEl.removeAttribute('src');
+          imageEl.alt = '';
+        }
+      }
+
+      const imageWrapper = itemEl.querySelector('.kr-calendar-image');
+      setImageVisible(imageWrapper, imageEl, Boolean(imageUrl));
+    });
   }
 
   async function loadData() {
-    setLoading(true);
     try {
       const res = await fetch(CALENDAR_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('Bad response');
       const data = await res.json();
 
       const filtered = (data || [])
-        .filter(item => String(item.mmdd).padStart(4, '0') === mmdd)
+        .filter(item => String(item.mmdd || '').padStart(4, '0') === mmdd)
         .sort((a, b) => Number(a.year) - Number(b.year));
 
-      renderItems(filtered);
-    } catch (e) {
-      renderError();
-    } finally {
-      setLoading(false);
+      fillItems(filtered);
+    } catch (error) {
+      setEmptyVisible(true);
+      itemEls.forEach(el => setItemVisible(el, false));
+      console.error('Не удалось загрузить данные календаря', error);
     }
   }
 
@@ -199,87 +206,96 @@ function doGet() {
 
 ---
 
-## Простой HTML‑блок (CSV‑вариант)
+## Простой JS‑код (CSV‑вариант)
 
-> Этот вариант может работать не всегда из‑за CORS и особенностей CSV, поэтому используйте как запасной.
+> Этот вариант может работать не всегда из‑за CORS и особенностей CSV, поэтому используйте как запасной. Скрипт **не создаёт разметку**, не добавляет стили и **не использует innerHTML**.
 
 ```html
-<div id="kr-calendar" class="kr-calendar kr-calendar--loading">
-  <div class="kr-calendar__header">
-    <div class="kr-calendar__date"></div>
-    <div class="kr-calendar__weekday"></div>
-  </div>
-  <div class="kr-calendar__list"></div>
-</div>
-
-<style>
-  .kr-calendar { max-width: 800px; margin: 0 auto; padding: 16px; }
-  .kr-calendar__header { margin-bottom: 16px; }
-  .kr-calendar__date { font-size: 20px; font-weight: 600; }
-  .kr-calendar__weekday { font-size: 14px; opacity: 0.7; }
-  .kr-calendar__list { display: grid; gap: 12px; }
-  .kr-calendar__item { display: grid; gap: 8px; }
-  .kr-calendar__year { font-weight: 600; }
-  .kr-calendar__media { max-width: 100%; }
-  .kr-calendar__img { width: 100%; height: auto; display: block; border-radius: 4px; }
-  .kr-calendar__empty, .kr-calendar__error { padding: 12px; background: #f5f5f5; border-radius: 6px; }
-  .kr-calendar--loading { opacity: 0.6; }
-</style>
-
 <script>
 (() => {
   const CSV_URL = 'YOUR_PUBLISHED_CSV_URL'; // <-- замените на ссылку CSV
-
-  const container = document.getElementById('kr-calendar');
-  const dateEl = container.querySelector('.kr-calendar__date');
-  const weekdayEl = container.querySelector('.kr-calendar__weekday');
-  const listEl = container.querySelector('.kr-calendar__list');
-
   const locale = 'ru-RU';
-  const today = new Date();
+  const timeZone = 'Europe/Minsk';
 
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
+  // Скрипт заполняет только первый набор элементов на странице.
+  const dateEl = document.querySelector('.kr-calendar-date');
+  const emptyEl = document.querySelector('.kr-calendar-empty');
+  const itemEls = Array.from(document.querySelectorAll('.kr-calendar-item'));
+
+  if (!dateEl || !emptyEl || itemEls.length === 0) {
+    return;
+  }
+
+  const today = new Date();
+  const formatter = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', timeZone });
+  const parts = new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone,
+  }).formatToParts(today);
+
+  const mm = parts.find(part => part.type === 'month')?.value || '';
+  const dd = parts.find(part => part.type === 'day')?.value || '';
   const mmdd = `${mm}${dd}`;
 
-  dateEl.textContent = today.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
-  weekdayEl.textContent = today.toLocaleDateString(locale, { weekday: 'long' });
+  dateEl.textContent = formatter.format(today);
 
-  function setLoading(isLoading) {
-    container.classList.toggle('kr-calendar--loading', isLoading);
+  function setEmptyVisible(isVisible) {
+    emptyEl.style.display = isVisible ? '' : 'none';
   }
 
-  function renderEmpty() {
-    listEl.innerHTML = '<div class="kr-calendar__empty">В этот день ничего не произошло</div>';
+  function setItemVisible(el, isVisible) {
+    el.style.display = isVisible ? '' : 'none';
   }
 
-  function renderError() {
-    listEl.innerHTML = '<div class="kr-calendar__error">Не удалось загрузить данные календаря</div>';
+  function setImageVisible(wrapperEl, imgEl, isVisible) {
+    if (wrapperEl) {
+      wrapperEl.style.display = isVisible ? '' : 'none';
+    }
+    if (imgEl) {
+      imgEl.style.display = isVisible ? '' : 'none';
+    }
   }
 
-  function renderItems(items) {
+  function fillItems(items) {
     if (!items.length) {
-      renderEmpty();
+      setEmptyVisible(true);
+      itemEls.forEach(el => setItemVisible(el, false));
       return;
     }
 
-    const html = items.map(item => {
-      const year = item.year ? `<div class="kr-calendar__year">${item.year}</div>` : '';
-      const text = item.text ? `<div class="kr-calendar__text">${item.text}</div>` : '';
-      const img = item.image
-        ? `<div class="kr-calendar__media"><img class="kr-calendar__img" loading="lazy" src="${item.image}" alt="${item.text || 'Историческое событие'} (${item.year || ''})"></div>`
-        : '';
+    setEmptyVisible(false);
 
-      return `
-        <div class="kr-calendar__item">
-          ${year}
-          ${text}
-          ${img}
-        </div>
-      `;
-    }).join('');
+    itemEls.forEach((itemEl, index) => {
+      const data = items[index];
+      if (!data) {
+        setItemVisible(itemEl, false);
+        return;
+      }
 
-    listEl.innerHTML = html;
+      setItemVisible(itemEl, true);
+
+      const yearEl = itemEl.querySelector('.kr-calendar-year');
+      const textEl = itemEl.querySelector('.kr-calendar-text');
+      const imageEl = itemEl.querySelector('.kr-calendar-image img') || itemEl.querySelector('.kr-calendar-image');
+
+      if (yearEl) yearEl.textContent = data.year ? String(data.year) : '';
+      if (textEl) textEl.textContent = data.text ? String(data.text) : '';
+
+      const imageUrl = data.image ? String(data.image).trim() : '';
+      if (imageEl && imageEl.tagName.toLowerCase() === 'img') {
+        if (imageUrl) {
+          imageEl.src = imageUrl;
+          imageEl.alt = data.text ? String(data.text) : 'Историческое событие';
+        } else {
+          imageEl.removeAttribute('src');
+          imageEl.alt = '';
+        }
+      }
+
+      const imageWrapper = itemEl.querySelector('.kr-calendar-image');
+      setImageVisible(imageWrapper, imageEl, Boolean(imageUrl));
+    });
   }
 
   function parseCSV(text) {
@@ -295,7 +311,6 @@ function doGet() {
   }
 
   async function loadData() {
-    setLoading(true);
     try {
       const res = await fetch(CSV_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('Bad response');
@@ -303,14 +318,14 @@ function doGet() {
       const data = parseCSV(text);
 
       const filtered = (data || [])
-        .filter(item => String(item.mmdd).padStart(4, '0') === mmdd)
+        .filter(item => String(item.mmdd || '').padStart(4, '0') === mmdd)
         .sort((a, b) => Number(a.year) - Number(b.year));
 
-      renderItems(filtered);
-    } catch (e) {
-      renderError();
-    } finally {
-      setLoading(false);
+      fillItems(filtered);
+    } catch (error) {
+      setEmptyVisible(true);
+      itemEls.forEach(el => setItemVisible(el, false));
+      console.error('Не удалось загрузить данные календаря', error);
     }
   }
 
@@ -321,40 +336,33 @@ function doGet() {
 
 ---
 
-## Список классов и их назначение
+## Список классов и их назначение (ZeroBlock)
 
-- `.kr-calendar` — контейнер виджета
-- `.kr-calendar__header` — шапка
-- `.kr-calendar__date` — дата
-- `.kr-calendar__weekday` — день недели
-- `.kr-calendar__list` — список событий
-- `.kr-calendar__item` — элемент события
-- `.kr-calendar__year` — год
-- `.kr-calendar__text` — описание
-- `.kr-calendar__media` — обёртка изображения
-- `.kr-calendar__img` — изображение
-- `.kr-calendar__empty` — сообщение «пусто»
-- `.kr-calendar__error` — сообщение об ошибке
-- `.kr-calendar--loading` — состояние загрузки
+- `.kr-calendar-date` — элемент для строки даты (например, «20 января»)
+- `.kr-calendar-empty` — элемент с текстом «Мы ничего не знаем о знаковых событиях в этот день» (показывается только если событий нет или ошибка загрузки)
+- `.kr-calendar-item` — карточка события (можно создать несколько заранее)
+  - `.kr-calendar-year` — год события
+  - `.kr-calendar-text` — описание события
+  - `.kr-calendar-image` — контейнер изображения или сам `<img>` (если пустой URL — скрывается)
 
 ---
 
-## Как стилизовать (стартовые примеры CSS)
+## Как стилизовать
 
-> Эти правила можно вставить в Global CSS Tilda и свободно менять.
+Стилизацию полностью делайте через ZeroBlock/Global CSS Tilda — скрипт не добавляет стили и не создаёт новые элементы.
 
-```css
-.kr-calendar { font-family: Arial, sans-serif; }
-.kr-calendar__header { border-bottom: 1px solid #eee; padding-bottom: 12px; }
-.kr-calendar__date { font-size: 24px; letter-spacing: 0.2px; }
-.kr-calendar__weekday { text-transform: capitalize; color: #666; }
-.kr-calendar__item { padding: 12px; border: 1px solid #f0f0f0; border-radius: 8px; }
-.kr-calendar__year { color: #222; font-size: 18px; }
-.kr-calendar__text { line-height: 1.5; color: #444; }
-.kr-calendar__img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.kr-calendar__empty, .kr-calendar__error { text-align: center; color: #555; }
-.kr-calendar--loading { opacity: 0.7; }
-```
+---
+
+## Что создать в ZeroBlock
+
+1. Текстовый элемент с классом `.kr-calendar-date` — сюда подставляется строка даты (например, «20 января»).
+2. Текстовый элемент с классом `.kr-calendar-empty` и текстом **«Мы ничего не знаем о знаковых событиях в этот день»** — будет показываться только если событий нет или произошла ошибка загрузки.
+3. Несколько одинаковых карточек события с классом `.kr-calendar-item`. Внутри каждой карточки:
+   - `.kr-calendar-year` — место для года.
+   - `.kr-calendar-text` — место для описания.
+   - `.kr-calendar-image` — контейнер изображения или сам `<img>` (если URL пустой, элемент будет скрыт).
+
+Скрипт заполнит карточки по порядку и скроет лишние, если событий меньше, чем карточек.
 
 ---
 
@@ -362,7 +370,7 @@ function doGet() {
 
 1. Откройте страницу в Tilda.
 2. Добавьте блок **HTML** (например, T123).
-3. Вставьте полный HTML‑код из раздела «Финальный HTML‑блок».
+3. Вставьте `<script>...</script>` из раздела «Финальный JS‑код для Tilda ZeroBlock».
 4. Опубликуйте страницу.
 
 ---
@@ -376,7 +384,6 @@ function doGet() {
 
 ## Поведение
 
-- Дата и день недели выводятся по **локальному времени браузера** пользователя.
+- Дата выводится на русском языке с таймзоной **Europe/Minsk** (через `Intl.DateTimeFormat`).
 - События фильтруются по `mmdd` и сортируются по году **по возрастанию**.
-- Если данных нет — выводится «В этот день ничего не произошло».
-- Если источник недоступен — выводится «Не удалось загрузить данные календаря».
+- Если данных нет или источник недоступен — показывается элемент `.kr-calendar-empty`.
